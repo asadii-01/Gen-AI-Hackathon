@@ -1,0 +1,23 @@
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
+    groq_api_key: str = ""
+    llm_model_name: str = "llama-3.3-70b-versatile"
+    max_tokens: int = 1024
+    temperature: float = 0.7
+
+    # Server
+    host: str = "0.0.0.0"
+    port: int = 8000
+    cors_origins: list[str] = ["*"]
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
