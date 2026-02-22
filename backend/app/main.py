@@ -10,7 +10,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.database import init_db
 from app.routes import topics, debates, auth
+from app.routes import profile as profile_routes
+from app.routes import gap_reports as gap_reports_routes
 
 # Configure logging
 logging.basicConfig(
@@ -27,6 +30,10 @@ async def lifespan(app: FastAPI):
     logger.info("🏛️  SocraticCanvas Backend starting...")
     logger.info(f"   Model: {settings.llm_model_name}")
     logger.info(f"   API Key configured: {'✅' if settings.groq_api_key else '❌ Missing!'}")
+
+    # Initialize SQLite database
+    await init_db()
+
     yield
     logger.info("🏛️  SocraticCanvas Backend shutting down.")
 
@@ -52,6 +59,8 @@ app.add_middleware(
 app.include_router(topics.router)
 app.include_router(debates.router)
 app.include_router(auth.router)
+app.include_router(profile_routes.router)
+app.include_router(gap_reports_routes.router)
 
 
 @app.get("/api/health", tags=["Health"])

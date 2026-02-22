@@ -1,7 +1,9 @@
 """
 Authentication service — password hashing, JWT tokens, user CRUD.
+Uses SQLite for persistent storage.
 """
 
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -11,12 +13,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from app.config import get_settings
+from app.database import get_db
 from app.models.user import (
     UserRegister,
     UserResponse,
     TokenResponse,
-    users_db,
-    email_index,
 )
 
 # ── Password Hashing (bcrypt directly) ───────────────────────────────
@@ -57,64 +58,89 @@ def decode_access_token(token: str) -> str:
 bearer_scheme = HTTPBearer()
 
 
+def _row_to_user_response(row) -> UserResponse:
+    """Convert a SQLite row to UserResponse."""
+    return UserResponse(
+        id=row["id"],
+        email=row["email"],
+        username=row["username"],
+        study_domain=row["study_domain"] or "",
+        bio=row["bio"] or "",
+        interests=json.loads(row["interests"]) if row["interests"] else [],
+        strengths=json.loads(row["strengths"]) if row["strengths"] else [],
+        weaknesses=json.loads(row["weaknesses"]) if row["weaknesses"] else [],
+        learning_goals=json.loads(row["learning_goals"]) if row["learning_goals"] else [],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else None,
+    )
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> UserResponse:
     """Dependency: extract and validate JWT, return UserResponse."""
     user_id = decode_access_token(credentials.credentials)
-    user_data = users_db.get(user_id)
-    if not user_data:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    return UserResponse(
-        id=user_data["id"],
-        email=user_data["email"],
-        username=user_data["username"],
-        created_at=user_data["created_at"],
-    )
+
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        return _row_to_user_response(row)
+    finally:
+        await db.close()
 
 
 # ── User CRUD ─────────────────────────────────────────────────────────
 
-def register_user(data: UserRegister) -> TokenResponse:
+async def register_user(data: UserRegister) -> TokenResponse:
     """Create a new user, return JWT + user info."""
-    # Check duplicate email
-    if data.email.lower() in email_index:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+    db = await get_db()
+    try:
+        # Check duplicate email
+        cursor = await db.execute("SELECT id FROM users WHERE email = ?", (data.email.lower(),))
+        existing = await cursor.fetchone()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
-    user_id = uuid.uuid4().hex[:16]
-    now = datetime.now(timezone.utc)
+        user_id = uuid.uuid4().hex[:16]
+        now = datetime.now(timezone.utc).isoformat()
 
-    user_record = {
-        "id": user_id,
-        "email": data.email.lower(),
-        "username": data.username,
-        "hashed_password": hash_password(data.password),
-        "created_at": now,
-    }
+        await db.execute(
+            """INSERT INTO users (id, email, username, hashed_password, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, data.email.lower(), data.username, hash_password(data.password), now, now),
+        )
+        await db.commit()
 
-    users_db[user_id] = user_record
-    email_index[data.email.lower()] = user_id
+        user_resp = UserResponse(
+            id=user_id,
+            email=data.email.lower(),
+            username=data.username,
+            created_at=datetime.fromisoformat(now),
+            updated_at=datetime.fromisoformat(now),
+        )
+        token = create_access_token(user_id)
+        return TokenResponse(access_token=token, user=user_resp)
+    finally:
+        await db.close()
 
-    token = create_access_token(user_id)
-    user_resp = UserResponse(id=user_id, email=user_record["email"], username=data.username, created_at=now)
-    return TokenResponse(access_token=token, user=user_resp)
 
-
-def login_user(email: str, password: str) -> TokenResponse:
+async def login_user(email: str, password: str) -> TokenResponse:
     """Validate credentials, return JWT + user info."""
-    user_id = email_index.get(email.lower())
-    if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM users WHERE email = ?", (email.lower(),))
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
-    user_record = users_db[user_id]
-    if not verify_password(password, user_record["hashed_password"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+        if not verify_password(password, row["hashed_password"]):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
-    token = create_access_token(user_id)
-    user_resp = UserResponse(
-        id=user_id,
-        email=user_record["email"],
-        username=user_record["username"],
-        created_at=user_record["created_at"],
-    )
-    return TokenResponse(access_token=token, user=user_resp)
+        token = create_access_token(row["id"])
+        user_resp = _row_to_user_response(row)
+        return TokenResponse(access_token=token, user=user_resp)
+    finally:
+        await db.close()

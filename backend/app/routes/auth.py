@@ -13,13 +13,13 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 @router.post("/register", response_model=TokenResponse)
 async def register(data: UserRegister):
     """Create a new user account and return a JWT token."""
-    return register_user(data)
+    return await register_user(data)
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(data: UserLogin):
     """Authenticate with email & password, return a JWT token."""
-    return login_user(data.email, data.password)
+    return await login_user(data.email, data.password)
 
 
 @router.get("/me", response_model=UserResponse)

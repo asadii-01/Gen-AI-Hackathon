@@ -92,6 +92,8 @@ Strength: [one sentence]
 Weakness: [one sentence]
 
 ---STUDENT---
+Argumentation: [score]/5
+Consistency: [score]/5
 Overall: [score]/10
 Strength: [one sentence]
 Weakness: [one sentence]
@@ -126,6 +128,8 @@ Best-supported claim: [one sentence]
 Weakest claim: [one sentence]
 
 ---STUDENT---
+Evidence Use: [score]/5
+Factual Accuracy: [score]/5
 Overall: [score]/10
 Strength: [one sentence]
 Weakness: [one sentence]
@@ -160,6 +164,8 @@ Most persuasive moment: [one sentence]
 Least persuasive moment: [one sentence]
 
 ---STUDENT---
+Clarity: [score]/5
+Engagement: [score]/5
 Overall: [score]/10
 Strength: [one sentence]
 Weakness: [one sentence]
@@ -278,51 +284,62 @@ class JudgeAgent:
     def _parse_evaluation(self, raw: str) -> JudgeEvaluation:
         """Parse the judge's raw text into a structured evaluation.
 
-        This uses a best-effort parser since LLM output can vary.
-        Falls back to storing raw feedback if structured parsing fails.
+        The LLM uses ---HEADER--- delimiters. Splitting by '---' separates each
+        header from its body into adjacent elements, so we re-join them.
+        Falls back to raw_feedback if structured parsing fails.
         """
+        import re
+
         evaluation = JudgeEvaluation(
             judge_type=self.judge_type,
             raw_feedback=raw,
         )
 
         try:
-            sections = raw.split("---")
-            for section in sections:
-                section = section.strip()
-                if not section:
-                    continue
+            # Split on ---HEADER--- pattern, keeping the header names as capture groups.
+            # This produces: ["", "DEBATER_A (Name)", "<body>", "DEBATER_B (Name)", "<body>", ...]
+            parts = re.split(r"---([^-]+)---", raw)
 
-                lines = section.strip().split("\n")
-                header = lines[0].strip().upper() if lines else ""
+            # parts[0] is any text before the first section (discard)
+            # Then pairs of (header, body) follow
+            it = iter(parts[1:])  # skip leading empty string
+            for header_raw, body in zip(it, it):
+                header = header_raw.strip().upper()
+                body = body.strip()
+                lines = body.split("\n")
 
                 if "DEBATER_A" in header:
-                    overall = self._extract_score(section, "Overall")
-                    evaluation.persona_a_overall = overall
-                    evaluation.persona_a_scores = self._extract_all_scores(section)
+                    evaluation.persona_a_overall = self._extract_score(body, "Overall")
+                    evaluation.persona_a_scores = self._extract_all_scores(body)
 
                 elif "DEBATER_B" in header:
-                    overall = self._extract_score(section, "Overall")
-                    evaluation.persona_b_overall = overall
-                    evaluation.persona_b_scores = self._extract_all_scores(section)
+                    evaluation.persona_b_overall = self._extract_score(body, "Overall")
+                    evaluation.persona_b_scores = self._extract_all_scores(body)
 
                 elif "STUDENT" in header:
-                    overall = self._extract_score(section, "Overall")
-                    evaluation.student_overall = overall
-                    evaluation.student_scores = self._extract_all_scores(section)
+                    evaluation.student_overall = self._extract_score(body, "Overall")
+                    evaluation.student_scores = self._extract_all_scores(body)
 
-                    # Extract strengths, weaknesses, recommendations
+                    # Extract strengths, weaknesses, recommendations from student section
                     for line in lines:
-                        line_lower = line.lower().strip()
+                        line_clean = line.strip()
+                        line_lower = line_clean.lower()
                         if line_lower.startswith("strength:"):
-                            evaluation.strengths.append(line.split(":", 1)[1].strip())
+                            val = line_clean.split(":", 1)[1].strip()
+                            if val:
+                                evaluation.strengths.append(val)
                         elif line_lower.startswith("weakness:"):
-                            evaluation.weaknesses.append(line.split(":", 1)[1].strip())
-                        elif line_lower.startswith("recommendation:") or line_lower.startswith("communication recommendation:"):
-                            evaluation.recommendation = line.split(":", 1)[1].strip()
+                            val = line_clean.split(":", 1)[1].strip()
+                            if val:
+                                evaluation.weaknesses.append(val)
+                        elif (
+                            line_lower.startswith("recommendation:")
+                            or line_lower.startswith("communication recommendation:")
+                        ):
+                            evaluation.recommendation = line_clean.split(":", 1)[1].strip()
 
         except Exception:
-            # If parsing fails, the raw_feedback is still available
+            # raw_feedback is still available as fallback
             pass
 
         return evaluation
@@ -339,16 +356,26 @@ class JudgeAgent:
 
     @staticmethod
     def _extract_all_scores(text: str) -> list[JudgeScore]:
-        """Extract all category scores from a section."""
+        """Extract all named category scores (e.g. 'Validity: 4/5') from a section.
+
+        Skips 'Overall' since that is tracked separately.
+        Normalizes all scores to a 0-10 scale.
+        """
         import re
         scores = []
-        pattern = r"(\w[\w\s]*?):\s*(\d+(?:\.\d+)?)\s*/\s*(\d+)"
-        for match in re.finditer(pattern, text):
+        # Match lines like "Validity: 4/5" or "Evidence Use: 3/5"
+        # Use a line-anchored pattern so we don't accidentally match
+        # sub-expressions inside longer sentences.
+        pattern = r"^([A-Za-z][A-Za-z ]{1,30}?):\s*(\d+(?:\.\d+)?)\s*/\s*(\d+)"
+        for line in text.splitlines():
+            match = re.match(pattern, line.strip())
+            if not match:
+                continue
             category = match.group(1).strip()
+            if category.lower() == "overall":
+                continue
             score_val = float(match.group(2))
             max_val = float(match.group(3))
-            # Normalize to 0-10 scale
-            normalized = (score_val / max_val) * 10 if max_val > 0 else 0
-            if category.lower() != "overall":
-                scores.append(JudgeScore(category=category, score=normalized))
+            normalized = (score_val / max_val) * 10 if max_val > 0 else 0.0
+            scores.append(JudgeScore(category=category, score=round(normalized, 1)))
         return scores

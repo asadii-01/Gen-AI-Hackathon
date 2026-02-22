@@ -78,24 +78,30 @@ JUDGE EVALUATIONS:
 
 def _parse_gap_report(raw: str, judge_evaluations: list[JudgeEvaluation]) -> GapReport:
     """Parse the LLM's raw gap report text into a structured GapReport."""
+    import re
+
+    # Initialize with empty structured fields; only fall back to raw on complete failure
     report = GapReport(
-        overall_summary=raw,
+        overall_summary="",
         judge_evaluations=judge_evaluations,
     )
 
     try:
-        sections = raw.split("---")
-        current_section = None
+        # Split on ---HEADER--- delimiters, keeping header names as capture groups.
+        # Produces: ["", "REASONING_BLIND_SPOTS", "<items>", "EVIDENCE_GAPS", "<items>", ...]
+        parts = re.split(r"---([^-]+)---", raw)
 
-        for section in sections:
-            section = section.strip()
-            if not section:
-                continue
+        # parts[0] is any text before first section (discard)
+        # Then alternating (header, body) pairs follow
+        it = iter(parts[1:])
+        for header_raw, body in zip(it, it):
+            header = header_raw.strip().upper()
+            body = body.strip()
 
-            header = section.split("\n")[0].strip().upper()
+            # Extract bullet-point items
             items = [
                 line.strip().lstrip("- ").strip()
-                for line in section.split("\n")[1:]
+                for line in body.splitlines()
                 if line.strip() and line.strip().startswith("-")
             ]
 
@@ -110,14 +116,11 @@ def _parse_gap_report(raw: str, judge_evaluations: list[JudgeEvaluation]) -> Gap
             elif "RECOMMENDED_READINGS" in header or "RECOMMENDED READINGS" in header:
                 report.recommended_readings = items
             elif "SUMMARY" in header:
-                summary_lines = [
-                    line.strip()
-                    for line in section.split("\n")[1:]
-                    if line.strip()
-                ]
+                summary_lines = [line.strip() for line in body.splitlines() if line.strip()]
                 report.overall_summary = " ".join(summary_lines)
+
     except Exception:
-        # If parsing fails, the raw text is still in overall_summary
-        pass
+        # If parsing completely fails, store the raw text so nothing is lost
+        report.overall_summary = raw
 
     return report

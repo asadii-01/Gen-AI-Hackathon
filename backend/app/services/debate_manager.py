@@ -22,6 +22,7 @@ from app.models.schemas import (
 from app.content.loader import get_topic, get_personas_for_topic
 from app.services.agents import DebaterAgent, ModeratorAgent, JudgeAgent
 from app.services.gap_report import generate_gap_report
+from app.services.gap_report_store import save_gap_report
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +30,14 @@ logger = logging.getLogger(__name__)
 class DebateSession:
     """Holds the state for a single debate session."""
 
-    def __init__(self, session_id: str, topic_id: str):
+    def __init__(self, session_id: str, topic_id: str, user_id: str | None = None):
         topic = get_topic(topic_id)
         if not topic:
             raise ValueError(f"Topic not found: {topic_id}")
 
         self.id = session_id
         self.topic_id = topic_id
+        self.user_id = user_id
         self.topic_title = topic.title
         self.resolution = topic.resolution
         self.phase = DebatePhase.CREATED
@@ -141,10 +143,10 @@ class DebateSessionManager:
     def __init__(self):
         self._sessions: dict[str, DebateSession] = {}
 
-    def create_session(self, topic_id: str) -> DebateSession:
+    def create_session(self, topic_id: str, user_id: str | None = None) -> DebateSession:
         """Create a new debate session."""
         session_id = str(uuid.uuid4())
-        session = DebateSession(session_id, topic_id)
+        session = DebateSession(session_id, topic_id, user_id=user_id)
         self._sessions[session_id] = session
         return session
 
@@ -490,9 +492,25 @@ class DebateSessionManager:
             session.gap_report = report
             session.phase = DebatePhase.COMPLETED
 
+            # Persist gap report to SQLite if user is authenticated
+            saved_report_id = None
+            if session.user_id:
+                try:
+                    saved = await save_gap_report(
+                        user_id=session.user_id,
+                        debate_session_id=session.id,
+                        topic_title=session.topic_title,
+                        gap_report=report,
+                    )
+                    saved_report_id = saved.id
+                    logger.info(f"Gap report saved: {saved_report_id} for user {session.user_id}")
+                except Exception as e:
+                    logger.error(f"Failed to persist gap report: {e}")
+
             yield StreamEvent(
                 event="report",
                 data={
+                    "report_id": saved_report_id,
                     "reasoning_blind_spots": report.reasoning_blind_spots,
                     "evidence_gaps": report.evidence_gaps,
                     "rhetorical_opportunities": report.rhetorical_opportunities,

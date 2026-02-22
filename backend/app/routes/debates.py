@@ -5,7 +5,8 @@ Handles debate lifecycle: create, start, intervene, judge, and report.
 
 import json
 import asyncio
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sse_starlette.sse import EventSourceResponse
 
 from app.models.schemas import (
@@ -15,9 +16,26 @@ from app.models.schemas import (
     GapReport,
     StreamEvent,
 )
+from app.models.user import UserResponse
 from app.services.debate_manager import get_debate_manager
+from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/api/debates", tags=["Debates"])
+
+# Optional auth — allows debates without login, but links to user if logged in
+_bearer = HTTPBearer(auto_error=False)
+
+
+async def _get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> UserResponse | None:
+    """Return the current user if a valid token is provided, else None."""
+    if credentials is None:
+        return None
+    try:
+        return await get_current_user(credentials)
+    except Exception:
+        return None
 
 
 def _stream_event_to_sse(event: StreamEvent) -> dict:
@@ -27,11 +45,15 @@ def _stream_event_to_sse(event: StreamEvent) -> dict:
 
 
 @router.post("", response_model=DebateSessionResponse, status_code=201)
-async def create_debate(request: CreateDebateRequest):
+async def create_debate(
+    request: CreateDebateRequest,
+    current_user: UserResponse | None = Depends(_get_optional_user),
+):
     """Create a new debate session for a given topic."""
     manager = get_debate_manager()
     try:
-        session = manager.create_session(request.topic_id)
+        user_id = current_user.id if current_user else None
+        session = manager.create_session(request.topic_id, user_id=user_id)
         return session.to_response()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
