@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     groq_api_key: str
     llm_model_name: str = "llama-3.3-70b-versatile"
+    llm_fallback_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     max_tokens: int = 1024
     temperature: float = 0.7
 

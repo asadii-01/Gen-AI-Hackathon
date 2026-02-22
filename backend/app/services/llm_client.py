@@ -1,13 +1,13 @@
 """
 Groq LLM client wrapper for SocraticCanvas.
 Provides synchronous and streaming inference using the Groq SDK.
+Automatically falls back to a secondary model on rate-limit (429) errors.
 """
 
-import asyncio
 import logging
 from typing import AsyncGenerator
 
-from groq import Groq, AsyncGroq
+from groq import Groq, AsyncGroq, RateLimitError
 
 from app.config import get_settings
 
@@ -20,6 +20,7 @@ class LLMClient:
     def __init__(self):
         settings = get_settings()
         self.model = settings.llm_model_name
+        self.fallback_model = settings.llm_fallback_model
         self.max_tokens = settings.max_tokens
         self.temperature = settings.temperature
         self._sync_client = Groq(api_key=settings.groq_api_key)
@@ -32,14 +33,24 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> str:
-        """Generate a completion synchronously."""
+        """Generate a completion synchronously. Falls back on rate limit."""
         full_messages = [{"role": "system", "content": system_prompt}] + messages
+        kwargs = dict(
+            messages=full_messages,
+            temperature=temperature or self.temperature,
+            max_tokens=max_tokens or self.max_tokens,
+        )
         try:
             response = self._sync_client.chat.completions.create(
-                model=self.model,
-                messages=full_messages,
-                temperature=temperature or self.temperature,
-                max_tokens=max_tokens or self.max_tokens,
+                model=self.model, **kwargs
+            )
+            return response.choices[0].message.content or ""
+        except RateLimitError as e:
+            logger.warning(
+                f"Rate limit hit on {self.model}, falling back to {self.fallback_model}: {e}"
+            )
+            response = self._sync_client.chat.completions.create(
+                model=self.fallback_model, **kwargs
             )
             return response.choices[0].message.content or ""
         except Exception as e:
@@ -53,14 +64,24 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> str:
-        """Generate a completion asynchronously."""
+        """Generate a completion asynchronously. Falls back on rate limit."""
         full_messages = [{"role": "system", "content": system_prompt}] + messages
+        kwargs = dict(
+            messages=full_messages,
+            temperature=temperature or self.temperature,
+            max_tokens=max_tokens or self.max_tokens,
+        )
         try:
             response = await self._async_client.chat.completions.create(
-                model=self.model,
-                messages=full_messages,
-                temperature=temperature or self.temperature,
-                max_tokens=max_tokens or self.max_tokens,
+                model=self.model, **kwargs
+            )
+            return response.choices[0].message.content or ""
+        except RateLimitError as e:
+            logger.warning(
+                f"Rate limit hit on {self.model}, falling back to {self.fallback_model}: {e}"
+            )
+            response = await self._async_client.chat.completions.create(
+                model=self.fallback_model, **kwargs
             )
             return response.choices[0].message.content or ""
         except Exception as e:
@@ -74,15 +95,28 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> AsyncGenerator[str, None]:
-        """Stream a completion token by token asynchronously."""
+        """Stream a completion token by token. Falls back on rate limit."""
         full_messages = [{"role": "system", "content": system_prompt}] + messages
+        kwargs = dict(
+            messages=full_messages,
+            temperature=temperature or self.temperature,
+            max_tokens=max_tokens or self.max_tokens,
+            stream=True,
+        )
         try:
             stream = await self._async_client.chat.completions.create(
-                model=self.model,
-                messages=full_messages,
-                temperature=temperature or self.temperature,
-                max_tokens=max_tokens or self.max_tokens,
-                stream=True,
+                model=self.model, **kwargs
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    yield delta.content
+        except RateLimitError as e:
+            logger.warning(
+                f"Rate limit hit on {self.model} (stream), falling back to {self.fallback_model}: {e}"
+            )
+            stream = await self._async_client.chat.completions.create(
+                model=self.fallback_model, **kwargs
             )
             async for chunk in stream:
                 delta = chunk.choices[0].delta
