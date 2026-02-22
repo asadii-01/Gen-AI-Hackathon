@@ -151,17 +151,58 @@ export interface SSEJudgeResultEvent {
   raw_feedback: string;
 }
 
-// ── Auth Models ──────────────────────────────────────────────────────
+// ── Auth & Profile Models ────────────────────────────────────────────
 
 export interface User {
   id: string;
   email: string;
   username: string;
+  study_domain: string;
+  bio: string;
+  interests: string[];
+  strengths: string[];
+  weaknesses: string[];
+  learning_goals: string[];
   created_at: string;
+  updated_at: string | null;
+}
+
+export interface UserProfileUpdate {
+  username?: string;
+  study_domain?: string;
+  bio?: string;
+  interests?: string[];
+  strengths?: string[];
+  weaknesses?: string[];
+  learning_goals?: string[];
 }
 
 export interface AuthResponse {
   access_token: string;
   token_type: string;
   user: User;
+}
+
+// ── Gap Report History Models ────────────────────────────────────────
+
+export interface GapReportListItem {
+  id: string;
+  debate_session_id: string;
+  topic_title: string;
+  overall_summary: string;
+  created_at: string;
+}
+
+export interface GapReportRecord {
+  id: string;
+  user_id: string;
+  debate_session_id: string;
+  topic_title: string;
+  reasoning_blind_spots: string[];
+  evidence_gaps: string[];
+  rhetorical_opportunities: string[];
+  follow_up_questions: string[];
+  recommended_readings: string[];
+  overall_summary: string;
+  created_at: string;
 }

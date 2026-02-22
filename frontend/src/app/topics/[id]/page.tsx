@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { TopicDetail } from "@/lib/types";
 import { fetchTopicDetail, createDebate } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import PersonaCard from "@/components/PersonaCard";
 import {
   HiArrowLeft,
@@ -15,6 +16,7 @@ import {
 export default function TopicDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const topicId = params.id as string;
 
   const [topic, setTopic] = useState<TopicDetail | null>(null);
@@ -30,6 +32,11 @@ export default function TopicDetailPage() {
   }, [topicId]);
 
   async function handleStartDebate() {
+    // Require login before starting a debate
+    if (!user) {
+      router.push("/login");
+      return;
+    }
     setStarting(true);
     try {
       const session = await createDebate(topicId);

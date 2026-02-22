@@ -5,6 +5,9 @@ import {
   GapReport,
   AuthResponse,
   User,
+  UserProfileUpdate,
+  GapReportListItem,
+  GapReportRecord,
 } from "./types";
 
 const API_BASE =
@@ -75,6 +78,80 @@ export async function fetchCurrentUser(): Promise<User> {
   return res.json();
 }
 
+// ── Profile helpers ──────────────────────────────────────────────────
+
+export async function fetchProfile(): Promise<User> {
+  const token = getToken();
+  if (!token) throw new Error("Not authenticated");
+  const res = await fetch(`${API_BASE}/profile`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Failed to fetch profile");
+  return res.json();
+}
+
+export async function updateProfile(data: UserProfileUpdate): Promise<User> {
+  const token = getToken();
+  if (!token) throw new Error("Not authenticated");
+  const res = await fetch(`${API_BASE}/profile`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Update failed" }));
+    throw new Error(err.detail || "Failed to update profile");
+  }
+  return res.json();
+}
+
+export async function deleteAccount(): Promise<void> {
+  const token = getToken();
+  if (!token) throw new Error("Not authenticated");
+  const res = await fetch(`${API_BASE}/profile`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Failed to delete account");
+}
+
+// ── Gap Report History helpers ───────────────────────────────────────
+
+export async function fetchGapReportHistory(): Promise<GapReportListItem[]> {
+  const token = getToken();
+  if (!token) throw new Error("Not authenticated");
+  const res = await fetch(`${API_BASE}/gap-reports`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Failed to fetch gap reports");
+  return res.json();
+}
+
+export async function fetchGapReportDetail(
+  reportId: string
+): Promise<GapReportRecord> {
+  const token = getToken();
+  if (!token) throw new Error("Not authenticated");
+  const res = await fetch(`${API_BASE}/gap-reports/${reportId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Gap report not found");
+  return res.json();
+}
+
+export async function deleteGapReportHistory(reportId: string): Promise<void> {
+  const token = getToken();
+  if (!token) throw new Error("Not authenticated");
+  const res = await fetch(`${API_BASE}/gap-reports/${reportId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Failed to delete gap report");
+}
+
 // ── REST helpers ─────────────────────────────────────────────────────
 
 export async function fetchTopics(): Promise<TopicSummary[]> {
@@ -92,9 +169,14 @@ export async function fetchTopicDetail(id: string): Promise<TopicDetail> {
 export async function createDebate(
   topicId: string
 ): Promise<DebateSessionResponse> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   const res = await fetch(`${API_BASE}/debates`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ topic_id: topicId }),
   });
   if (!res.ok) throw new Error("Failed to create debate");
