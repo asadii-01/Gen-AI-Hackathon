@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     max_tokens: int = 1024
     temperature: float = 0.7
 
+    # JWT Auth
+    jwt_secret_key: str = "change-me-in-production-super-secret-key-2024"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440  # 24 hours
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000

@@ -1,0 +1,581 @@
+{
+	"info": {
+		"_postman_id": "socratic-canvas-api-collection",
+		"name": "SocraticCanvas API",
+		"description": "AI-Powered Generative Debate Environment — SocraticCanvas Backend API.\n\nThis collection covers all endpoints for managing debate topics, debate sessions, student interventions, judge evaluations, and gap reports.\n\n## Setup\n1. Set the `base_url` variable to your backend URL (default: `http://localhost:8000`)\n2. Use the Topics endpoints to discover available `topic_id` values\n3. Create a debate to get a `session_id`, then use it in subsequent requests\n\n## Flow\n1. **Health Check** → Verify the server is running\n2. **List Topics** → Get available debate topics\n3. **Get Topic Detail** → Inspect a specific topic's personas\n4. **Create Debate** → Start a new session with a topic\n5. **Start Debate** → Kick off the debate (SSE stream)\n6. **Intervene** → Submit student questions/challenges (SSE stream)\n7. **Judge Debate** → Run all three judges (SSE stream)\n8. **Get Gap Report** → Retrieve the personalized learning report\n9. **Stream Debate** → Connect for real-time updates (SSE)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "topic_id",
+			"value": "topic_1",
+			"type": "string"
+		},
+		{
+			"key": "session_id",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Health",
+			"description": "Server health check endpoints.",
+			"item": [
+				{
+					"name": "Health Check",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Service is healthy', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('healthy');",
+									"    pm.expect(jsonData.service).to.eql('SocraticCanvas');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/health",
+							"host": ["{{base_url}}"],
+							"path": ["api", "health"]
+						},
+						"description": "Check if the SocraticCanvas backend is running and verify the LLM configuration status.\n\n**Response Fields:**\n- `status` — \"healthy\" if the server is up\n- `service` — \"SocraticCanvas\"\n- `model` — The configured LLM model name\n- `api_key_configured` — Whether the Groq API key is set"
+					},
+					"response": [
+						{
+							"name": "Healthy Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/health",
+									"host": ["{{base_url}}"],
+									"path": ["api", "health"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"status\": \"healthy\",\n  \"service\": \"SocraticCanvas\",\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"api_key_configured\": true\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Topics",
+			"description": "Endpoints for browsing available debate topics and their persona details.",
+			"item": [
+				{
+					"name": "List All Topics",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response is an array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"});",
+									"",
+									"pm.test('Auto-set topic_id from first result', function () {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.length > 0) {",
+									"        pm.collectionVariables.set('topic_id', jsonData[0].id);",
+									"        console.log('Set topic_id to: ' + jsonData[0].id);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/topics",
+							"host": ["{{base_url}}"],
+							"path": ["api", "topics"]
+						},
+						"description": "Retrieve a list of all available debate topics with brief persona summaries.\n\nEach topic includes:\n- `id` — Unique topic identifier\n- `title` — Topic title\n- `resolution` — The debate resolution statement\n- `persona_a` / `persona_b` — Brief persona summaries (name, era, role, core_stance)"
+					},
+					"response": [
+						{
+							"name": "Topics List",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/topics",
+									"host": ["{{base_url}}"],
+									"path": ["api", "topics"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "[\n  {\n    \"id\": \"topic_1\",\n    \"title\": \"Example Debate Topic\",\n    \"resolution\": \"Resolved: This is an example resolution\",\n    \"persona_a\": {\n      \"id\": \"persona_a_1\",\n      \"name\": \"Debater A\",\n      \"era\": \"Modern\",\n      \"role\": \"Proponent\",\n      \"core_stance\": \"In favor of the resolution\"\n    },\n    \"persona_b\": {\n      \"id\": \"persona_b_1\",\n      \"name\": \"Debater B\",\n      \"era\": \"Modern\",\n      \"role\": \"Opponent\",\n      \"core_stance\": \"Against the resolution\"\n    }\n  }\n]"
+						}
+					]
+				},
+				{
+					"name": "Get Topic Detail",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Topic has full persona details', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('persona_a');",
+									"    pm.expect(jsonData).to.have.property('persona_b');",
+									"    pm.expect(jsonData.persona_a).to.have.property('knowledge');",
+									"    pm.expect(jsonData.persona_a).to.have.property('beliefs');",
+									"    pm.expect(jsonData.persona_a).to.have.property('speaking_style');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/topics/{{topic_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "topics", "{{topic_id}}"]
+						},
+						"description": "Get detailed information about a specific topic, including full persona profiles.\n\n**Path Parameters:**\n- `topic_id` — The topic's unique identifier\n\n**Full Persona Details Include:**\n- `knowledge`, `beliefs`, `distrusts`, `blind_spots`\n- `speaking_style`, `favorite_phrases`\n- `fallacies`, `constraints`\n- `curveball_interventions`, `argument_map_a`, `argument_map_b`"
+					},
+					"response": [
+						{
+							"name": "Topic Not Found",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/topics/invalid_topic_id",
+									"host": ["{{base_url}}"],
+									"path": ["api", "topics", "invalid_topic_id"]
+								}
+							},
+							"status": "Not Found",
+							"code": 404,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"detail\": \"Topic not found: invalid_topic_id\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Debates",
+			"description": "Endpoints for the full debate lifecycle: create, start, intervene, judge, report, and stream.",
+			"item": [
+				{
+					"name": "Create Debate",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Session created with correct topic', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('topic_id');",
+									"    pm.expect(jsonData).to.have.property('phase');",
+									"    pm.expect(jsonData.phase).to.eql('created');",
+									"});",
+									"",
+									"pm.test('Auto-set session_id', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set('session_id', jsonData.id);",
+									"    console.log('Set session_id to: ' + jsonData.id);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"topic_id\": \"{{topic_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/debates",
+							"host": ["{{base_url}}"],
+							"path": ["api", "debates"]
+						},
+						"description": "Create a new debate session for a given topic.\n\n**Request Body:**\n- `topic_id` (string, required) — The ID of the topic to debate\n\n**Response:** Full `DebateSessionResponse` with session ID, topic info, personas, phase (`created`), and empty messages array.\n\n⚡ The `session_id` is automatically saved to the collection variables for use in subsequent requests."
+					},
+					"response": [
+						{
+							"name": "Debate Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"topic_id\": \"topic_1\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/debates",
+									"host": ["{{base_url}}"],
+									"path": ["api", "debates"]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"id\": \"abc-123-def-456\",\n  \"topic_id\": \"topic_1\",\n  \"topic_title\": \"Example Debate Topic\",\n  \"phase\": \"created\",\n  \"current_round\": 0,\n  \"max_rounds\": 3,\n  \"messages\": [],\n  \"persona_a\": {\n    \"id\": \"persona_a_1\",\n    \"name\": \"Debater A\",\n    \"era\": \"Modern\",\n    \"role\": \"Proponent\",\n    \"core_stance\": \"In favor\"\n  },\n  \"persona_b\": {\n    \"id\": \"persona_b_1\",\n    \"name\": \"Debater B\",\n    \"era\": \"Modern\",\n    \"role\": \"Opponent\",\n    \"core_stance\": \"Against\"\n  },\n  \"created_at\": \"2026-02-21T04:37:00.000Z\"\n}"
+						},
+						{
+							"name": "Invalid Topic",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"topic_id\": \"nonexistent\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/debates",
+									"host": ["{{base_url}}"],
+									"path": ["api", "debates"]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"detail\": \"Topic not found or invalid\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Debate Session",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Session has expected fields', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('phase');",
+									"    pm.expect(jsonData).to.have.property('messages');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/debates/{{session_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "debates", "{{session_id}}"]
+						},
+						"description": "Get the current state of a debate session including all messages, phase, round info, and personas.\n\n**Path Parameters:**\n- `session_id` — The debate session's unique identifier"
+					},
+					"response": [
+						{
+							"name": "Session Not Found",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/debates/invalid-session-id",
+									"host": ["{{base_url}}"],
+									"path": ["api", "debates", "invalid-session-id"]
+								}
+							},
+							"status": "Not Found",
+							"code": 404,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"detail\": \"Session not found\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Start Debate (SSE)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "text/event-stream"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/debates/{{session_id}}/start",
+							"host": ["{{base_url}}"],
+							"path": ["api", "debates", "{{session_id}}", "start"]
+						},
+						"description": "Start the debate session. Generates the moderator introduction and both opening statements.\n\n**⚠️ SSE Stream Response** — This endpoint returns a Server-Sent Events stream. In Postman, the response will appear as a stream of events.\n\n**Path Parameters:**\n- `session_id` — The debate session ID\n\n**SSE Event Types:**\n- `message` — A new debate message (moderator intro, opening statements)\n- `phase_change` — The debate phase has changed\n- `error` — An error occurred\n- `done` — The stream is complete"
+					},
+					"response": []
+				},
+				{
+					"name": "Submit Intervention (SSE)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "text/event-stream"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"content\": \"Can you elaborate on the ethical implications of your position?\",\n  \"is_final_reflection\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/debates/{{session_id}}/intervene",
+							"host": ["{{base_url}}"],
+							"path": ["api", "debates", "{{session_id}}", "intervene"]
+						},
+						"description": "Submit a student intervention during the debate — a question, challenge, or final reflection.\n\n**⚠️ SSE Stream Response** — Returns Server-Sent Events with debater responses.\n\n**Path Parameters:**\n- `session_id` — The debate session ID\n\n**Request Body:**\n- `content` (string, required) — The student's question, challenge, or reflection\n- `is_final_reflection` (boolean, optional, default: `false`) — Set to `true` when submitting the student's concluding reflection\n\n**SSE Event Types:**\n- `message` — Debater response messages\n- `phase_change` — Phase transition\n- `error` — An error occurred\n- `done` — Stream complete"
+					},
+					"response": []
+				},
+				{
+					"name": "Submit Final Reflection (SSE)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "text/event-stream"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"content\": \"After hearing both sides, I believe the resolution has merit because of the ethical framework presented, but I think the practical concerns raised by the opposition deserve more consideration.\",\n  \"is_final_reflection\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/debates/{{session_id}}/intervene",
+							"host": ["{{base_url}}"],
+							"path": ["api", "debates", "{{session_id}}", "intervene"]
+						},
+						"description": "Submit the student's final reflection to conclude the debate. This is the same `/intervene` endpoint but with `is_final_reflection` set to `true`.\n\n**⚠️ SSE Stream Response**\n\n**Request Body:**\n- `content` (string) — The student's concluding reflection\n- `is_final_reflection` (boolean) — Must be `true`"
+					},
+					"response": []
+				},
+				{
+					"name": "Judge Debate (SSE)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "text/event-stream"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/debates/{{session_id}}/judge",
+							"host": ["{{base_url}}"],
+							"path": ["api", "debates", "{{session_id}}", "judge"]
+						},
+						"description": "Run all three judges (Logic, Evidence, Rhetoric) on the debate and generate the gap report.\n\n**⚠️ SSE Stream Response** — Returns judge evaluations as they complete.\n\n**Path Parameters:**\n- `session_id` — The debate session ID\n\n**SSE Event Types:**\n- `judge_result` — Individual judge evaluation (logic, evidence, rhetoric)\n- `report` — The compiled gap report\n- `phase_change` — Phase transitions (judging → gap_report → completed)\n- `error` — An error occurred\n- `done` — Stream complete\n\n**Note:** Must be called after the debate has sufficient content (opening statements + at least one intervention round)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Gap Report",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Report has expected fields', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('reasoning_blind_spots');",
+									"    pm.expect(jsonData).to.have.property('evidence_gaps');",
+									"    pm.expect(jsonData).to.have.property('rhetorical_opportunities');",
+									"    pm.expect(jsonData).to.have.property('follow_up_questions');",
+									"    pm.expect(jsonData).to.have.property('recommended_readings');",
+									"    pm.expect(jsonData).to.have.property('overall_summary');",
+									"    pm.expect(jsonData).to.have.property('judge_evaluations');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/debates/{{session_id}}/report",
+							"host": ["{{base_url}}"],
+							"path": ["api", "debates", "{{session_id}}", "report"]
+						},
+						"description": "Get the personalized gap report for a completed debate.\n\n**Prerequisites:** The `/judge` endpoint must have been called first.\n\n**Path Parameters:**\n- `session_id` — The debate session ID\n\n**Response Fields:**\n- `reasoning_blind_spots` — Areas of flawed reasoning identified\n- `evidence_gaps` — Missing or weak evidence areas\n- `rhetorical_opportunities` — Missed persuasion techniques\n- `follow_up_questions` — Suggested questions for further exploration\n- `recommended_readings` — Resources for improvement\n- `overall_summary` — Summary of the student's performance\n- `judge_evaluations` — Detailed evaluations from all three judges"
+					},
+					"response": [
+						{
+							"name": "Report Not Ready",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/debates/{{session_id}}/report",
+									"host": ["{{base_url}}"],
+									"path": ["api", "debates", "{{session_id}}", "report"]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"detail\": \"Gap report not yet generated. Run /judge first.\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Stream Debate Updates (SSE)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "text/event-stream"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/debates/{{session_id}}/stream",
+							"host": ["{{base_url}}"],
+							"path": ["api", "debates", "{{session_id}}", "stream"]
+						},
+						"description": "SSE endpoint for streaming real-time debate updates. Connect to receive all debate events as they happen.\n\n**Path Parameters:**\n- `session_id` — The debate session ID\n\n**SSE Events Emitted:**\n1. `state` — Current debate state (phase, round, message count)\n2. `message` — All existing messages replayed, each containing:\n   - `id` — Message ID\n   - `role` — Agent role (debater_a, debater_b, moderator, student, etc.)\n   - `persona_name` — The persona's display name\n   - `content` — Message content\n\n**Usage:** Useful for the frontend to hydrate state when connecting/reconnecting."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

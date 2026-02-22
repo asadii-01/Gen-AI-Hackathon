@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routes import topics, debates
+from app.routes import topics, debates, auth
 
 # Configure logging
 logging.basicConfig(
@@ -51,6 +51,7 @@ app.add_middleware(
 # Include routers
 app.include_router(topics.router)
 app.include_router(debates.router)
+app.include_router(auth.router)
 
 
 @app.get("/api/health", tags=["Health"])
