@@ -55,7 +55,7 @@ export default function Navbar() {
                     </Link>
 
                     {/* User avatar + name — links to dashboard */}
-                    <Link href="/dashboard" className="flex items-center gap-2 group">
+                    <Link href="/dashboard" className="flex items-center gap-2 group" aria-label={`${user.username}'s dashboard`}>
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#8b5cf6] to-[#06b6d4] text-xs font-bold text-white uppercase transition-shadow group-hover:shadow-lg group-hover:shadow-purple-500/30">
                         {user.username.charAt(0)}
                       </div>
@@ -63,7 +63,6 @@ export default function Navbar() {
                         {user.username}
                       </span>
                     </Link>
-
                     {/* Logout button */}
                     <button
                       onClick={logout}

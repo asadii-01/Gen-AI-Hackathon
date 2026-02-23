@@ -116,8 +116,8 @@ export async function deleteAccount(): Promise<void> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error("Failed to delete account");
+  removeToken();
 }
-
 // ── Gap Report History helpers ───────────────────────────────────────
 
 export async function fetchGapReportHistory(): Promise<GapReportListItem[]> {
@@ -195,6 +195,29 @@ export async function fetchGapReport(sessionId: string): Promise<GapReport> {
   const res = await fetch(`${API_BASE}/debates/${sessionId}/report`);
   if (!res.ok) throw new Error("Gap report not available");
   return res.json();
+}
+
+// ── TTS helper ───────────────────────────────────────────────────────
+
+/**
+ * Fetch synthesized speech audio from the Kokoro TTS backend.
+ * Returns a Blob of WAV audio that can be played via new Audio().
+ */
+export async function fetchTTSAudio(
+  text: string,
+  role: string,
+  personaName: string = ""
+): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, role, persona_name: personaName }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "TTS failed" }));
+    throw new Error(err.detail || "TTS synthesis failed");
+  }
+  return res.blob();
 }
 
 // ── SSE helper for POST-based EventSource ────────────────────────────

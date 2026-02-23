@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { DebateSessionResponse, DebateMessage, DebatePhase } from "@/lib/types";
-import { fetchDebate, connectSSE } from "@/lib/api";
+import { DebateSessionResponse, DebateMessage, DebatePhase, AgentRole } from "@/lib/types";
+import { fetchDebate, connectSSE, fetchTTSAudio } from "@/lib/api";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import ChatMessage from "@/components/ChatMessage";
 import PhaseIndicator from "@/components/PhaseIndicator";
 import {
@@ -12,6 +13,7 @@ import {
   HiScale,
   HiCheck,
   HiDocumentText,
+  HiMicrophone,
 } from "react-icons/hi2";
 
 export default function DebateArenaPage() {
@@ -31,6 +33,23 @@ export default function DebateArenaPage() {
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
 
+  // ── TTS state ─────────────────────────────────────────────────────
+
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [ttsLoading, setTtsLoading] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
+
+  // ── STT ───────────────────────────────────────────────────────────
+  const {
+    isSupported: sttSupported,
+    isListening,
+    transcript,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useSpeechRecognition();
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const newMessageIdsRef = useRef<Set<string>>(new Set());
@@ -45,6 +64,128 @@ export default function DebateArenaPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // ── STT → textarea sync ──────────────────────────────────────────
+  useEffect(() => {
+    if (transcript) {
+      setInput((prev) => (prev && !isListening ? prev : transcript));
+    }
+  }, [transcript]);
+
+  // ── Split text into sentences for pipelining ─────────────────────
+  const splitSentences = useCallback((text: string): string[] => {
+    // Split on sentence-ending punctuation followed by space or end
+    const raw = text.match(/[^.!?]*[.!?]+[\s]?|[^.!?]+$/g);
+    if (!raw) return [text];
+    return raw.map((s) => s.trim()).filter((s) => s.length > 0);
+  }, []);
+
+  // ── Stop current TTS playback ────────────────────────────────────
+  const stopTTS = useCallback(() => {
+    if (ttsAbortRef.current) {
+      ttsAbortRef.current.abort();
+      ttsAbortRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current = null;
+    }
+    setSpeakingMessageId(null);
+    setTtsLoading(false);
+  }, []);
+
+  // ── TTS playback with sentence-level pipelining ──────────────────
+  // Splits text into sentences, plays each sequentially.
+  // The first sentence plays almost instantly; the rest synthesize
+  // in the background while earlier sentences are still playing.
+  const playTTS = useCallback(
+    async (text: string, role: string, personaName: string, messageId?: string) => {
+      // Stop any current playback first
+      stopTTS();
+
+      // Toggle off if clicking the same message
+      if (messageId && speakingMessageId === messageId) {
+        return;
+      }
+
+      const sentences = splitSentences(text);
+      if (sentences.length === 0) return;
+
+      const abort = new AbortController();
+      ttsAbortRef.current = abort;
+
+      setSpeakingMessageId(messageId || null);
+      setTtsLoading(true);
+
+      try {
+        // Pipeline: prefetch next sentence while current one plays
+        for (let i = 0; i < sentences.length; i++) {
+          if (abort.signal.aborted) break;
+
+          // Start fetching this sentence
+          const blobPromise = fetchTTSAudio(sentences[i], role, personaName);
+
+          // Also prefetch the NEXT sentence in parallel (warm the cache)
+          if (i + 1 < sentences.length) {
+            fetchTTSAudio(sentences[i + 1], role, personaName).catch(() => {});
+          }
+
+          const blob = await blobPromise;
+          if (abort.signal.aborted) break;
+
+          // First sentence arrived — hide the loading spinner
+          if (i === 0) setTtsLoading(false);
+
+          const url = URL.createObjectURL(blob);
+
+          await new Promise<void>((resolve, reject) => {
+            if (abort.signal.aborted) {
+              URL.revokeObjectURL(url);
+              reject(new DOMException("Aborted", "AbortError"));
+              return;
+            }
+
+            const audio = new Audio(url);
+            audioRef.current = audio;
+
+            audio.onended = () => {
+              URL.revokeObjectURL(url);
+              resolve();
+            };
+            audio.onerror = () => {
+              URL.revokeObjectURL(url);
+              reject(new Error("Audio playback failed"));
+            };
+
+            // Listen for abort while playing
+            const onAbort = () => {
+              audio.pause();
+              URL.revokeObjectURL(url);
+              reject(new DOMException("Aborted", "AbortError"));
+            };
+            abort.signal.addEventListener("abort", onAbort, { once: true });
+
+            audio.play().catch(reject);
+          });
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          // Normal cancellation — do nothing
+        } else {
+          console.error("TTS playback failed:", err);
+        }
+      } finally {
+        if (ttsAbortRef.current === abort) {
+          setSpeakingMessageId(null);
+          setTtsLoading(false);
+          ttsAbortRef.current = null;
+        }
+      }
+    },
+    [speakingMessageId, splitSentences, stopTTS]
+  );
 
   // Load initial session state
   useEffect(() => {
@@ -72,7 +213,7 @@ export default function DebateArenaPage() {
         return [...prev, msg];
       });
     },
-    []
+    [playTTS]
   );
 
   const handlePhaseChange = useCallback(
@@ -116,6 +257,12 @@ export default function DebateArenaPage() {
   function submitIntervention() {
     if (!input.trim()) return;
 
+    // Stop STT if active
+    if (isListening) {
+      stopListening();
+      resetTranscript();
+    }
+
     setIsStreaming(true);
     setError("");
     setStatusMessage(
@@ -135,6 +282,7 @@ export default function DebateArenaPage() {
     );
 
     setInput("");
+    resetTranscript();
   }
 
   // Run judges
@@ -164,12 +312,23 @@ export default function DebateArenaPage() {
     );
   }
 
-  // Cleanup SSE on unmount
+  // Toggle mic
+  function toggleMic() {
+    if (isListening) {
+      stopListening();
+    } else {
+      resetTranscript();
+      startListening();
+    }
+  }
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       controllerRef.current?.abort();
+      stopTTS();
     };
-  }, []);
+  }, [stopTTS]);
 
   if (loading) {
     return (
@@ -222,11 +381,14 @@ export default function DebateArenaPage() {
               {session?.topic_title}
             </h2>
           </div>
-          <PhaseIndicator
-            phase={phase}
-            currentRound={currentRound}
-            maxRounds={maxRounds}
-          />
+          <div className="flex items-center gap-3">
+
+            <PhaseIndicator
+              phase={phase}
+              currentRound={currentRound}
+              maxRounds={maxRounds}
+            />
+          </div>
         </div>
       </div>
 
@@ -289,6 +451,8 @@ export default function DebateArenaPage() {
               personaName={msg.persona_name}
               content={msg.content}
               isNew={newMessageIdsRef.current.has(msg.id)}
+              onSpeak={(content, role) => playTTS(content, role, msg.persona_name, msg.id)}
+              isSpeakingThis={speakingMessageId === msg.id}
             />
           ))}
 
@@ -389,10 +553,35 @@ export default function DebateArenaPage() {
                     submitIntervention();
                   }
                 }}
-                placeholder="Ask a question, challenge an argument, or present your perspective..."
+                placeholder={
+                  isListening
+                    ? "🎙️ Listening... speak your response"
+                    : "Ask a question, challenge an argument, or present your perspective..."
+                }
                 rows={2}
-                className="flex-1 resize-none rounded-xl border border-white/[0.08] bg-[var(--bg-secondary)] px-4 py-3 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent-purple)]/40 focus:outline-none focus:ring-1 focus:ring-[var(--accent-purple)]/20 transition-all"
+                className={`flex-1 resize-none rounded-xl border px-4 py-3 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none transition-all ${
+                  isListening
+                    ? "border-red-500/40 bg-red-500/[0.04] focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20"
+                    : "border-white/[0.08] bg-[var(--bg-secondary)] focus:border-[var(--accent-purple)]/40 focus:ring-1 focus:ring-[var(--accent-purple)]/20"
+                }`}
               />
+
+              {/* Mic button */}
+              {sttSupported && (
+                <button
+                  onClick={toggleMic}
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-all ${
+                    isListening
+                      ? "bg-red-500 text-white shadow-lg shadow-red-500/30 pulse-mic hover:bg-red-600"
+                      : "bg-white/[0.06] text-[var(--text-muted)] border border-white/[0.08] hover:text-[var(--text-primary)] hover:bg-white/[0.1]"
+                  }`}
+                  title={isListening ? "Stop listening" : "Speak your response"}
+                >
+                  <HiMicrophone className="h-5 w-5" />
+                </button>
+              )}
+
+              {/* Send button */}
               <button
                 onClick={submitIntervention}
                 disabled={!input.trim()}
@@ -401,6 +590,14 @@ export default function DebateArenaPage() {
                 <HiPaperAirplane className="h-5 w-5" />
               </button>
             </div>
+
+            {/* Listening indicator */}
+            {isListening && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-red-400 animate-fade-in">
+                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                Listening... Speak now. Click mic again to stop.
+              </div>
+            )}
           </div>
         </div>
       )}

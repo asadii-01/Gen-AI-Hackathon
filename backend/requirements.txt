@@ -9,3 +9,5 @@ python-jose[cryptography]>=3.3.0
 python-multipart>=0.0.6
 pydantic[email]
 aiosqlite>=0.19.0
+kokoro-onnx
+soundfile>=0.12.1

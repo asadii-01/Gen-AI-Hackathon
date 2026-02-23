@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import init_db
-from app.routes import topics, debates, auth
+from app.routes import topics, debates, auth, tts
 from app.routes import profile as profile_routes
 from app.routes import gap_reports as gap_reports_routes
 
@@ -61,6 +61,7 @@ app.include_router(debates.router)
 app.include_router(auth.router)
 app.include_router(profile_routes.router)
 app.include_router(gap_reports_routes.router)
+app.include_router(tts.router)
 
 
 @app.get("/api/health", tags=["Health"])

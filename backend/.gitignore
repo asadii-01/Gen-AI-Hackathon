@@ -32,3 +32,5 @@ htmlcov/
 
 # Misc
 *.log
+
+voice-models/

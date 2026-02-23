@@ -369,6 +369,7 @@ function ReportsTab() {
     }
     setExpandedId(id);
     setDetailLoading(true);
+    setError("");
     try {
       const d = await fetchGapReportDetail(id);
       setDetail(d);
@@ -628,9 +629,14 @@ export default function DashboardPage() {
               <ProfileTab
                 user={profile || user}
                 onUpdated={async () => {
-                  await refreshUser();
-                  const updated = await fetchProfile();
-                  setProfile(updated);
+                  try {
+                    await refreshUser();
+                    const updated = await fetchProfile();
+                    setProfile(updated);
+                  } catch {
+                    // Profile was saved successfully; refresh failed silently
+                    // Optionally show a toast or retry
+                  }
                 }}
               />
             )

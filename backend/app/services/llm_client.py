@@ -37,8 +37,8 @@ class LLMClient:
         full_messages = [{"role": "system", "content": system_prompt}] + messages
         kwargs = dict(
             messages=full_messages,
-            temperature=temperature or self.temperature,
-            max_tokens=max_tokens or self.max_tokens,
+            temperature=self.temperature if temperature is None else temperature,
+            max_tokens=self.max_tokens if max_tokens is None else max_tokens
         )
         try:
             response = self._sync_client.chat.completions.create(
@@ -99,8 +99,8 @@ class LLMClient:
         full_messages = [{"role": "system", "content": system_prompt}] + messages
         kwargs = dict(
             messages=full_messages,
-            temperature=temperature or self.temperature,
-            max_tokens=max_tokens or self.max_tokens,
+            temperature=self.temperature if temperature is None else temperature,
+            max_tokens=self.max_tokens if max_tokens is None else max_tokens,
             stream=True,
         )
         try:

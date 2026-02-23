@@ -245,7 +245,7 @@ function ScoreRow({
       </div>
       <div className="h-1.5 w-full rounded-full bg-[var(--bg-secondary)]">
         <div
-          className={`h-1.5 rounded-full bg-${color == "emerald" ? "green" : color}-400 transition-all duration-700`}
+          className={`h-1.5 rounded-full ${color == "emerald" ? "bg-green-400" : `bg-${color}-400`} transition-all duration-700`}
           style={{ width: `${pct}%` }}
         />
       </div>

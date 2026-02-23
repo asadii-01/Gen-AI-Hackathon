@@ -85,6 +85,102 @@ Navigate to [http://localhost:8000/docs](http://localhost:8000/docs) for the int
 | `GET` | `/api/gap-reports/{id}` | Get full gap report detail |
 | `DELETE` | `/api/gap-reports/{id}` | Delete a gap report |
 
+### Text-to-Speech (TTS)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/tts` | Synthesize speech from text |
+
+**Request body:**
+```json
+{
+  "text": "Hello, this is a test.",
+  "role": "debater_a",
+  "persona_name": "Dr. Sarah Chen"
+}
+```
+
+**Response:** `audio/wav` binary data.
+
+The `persona_name` field is used to infer gender and assign an appropriate voice. See [TTS Setup](#tts-setup-kokoro-onnx) below.
+
+## TTS Setup (Kokoro-ONNX)
+
+The backend uses [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) for fast, offline text-to-speech with distinct voices per debate persona.
+
+### 1. Install TTS dependencies
+
+```bash
+pip install kokoro-onnx soundfile
+```
+
+### 2. Download model files
+
+Download both files into `backend/voice-models/`:
+
+```bash
+mkdir -p voice-models
+cd voice-models
+# Model (~300MB, or ~80MB quantized)
+wget https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+# Voice pack
+wget https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+```
+
+### 3. Verify file integrity (SHA256)
+
+After downloading, verify the checksums to ensure the files are intact.
+
+<!-- ⚠️ MAINTAINER NOTE: Update these hashes when model versions change.
+     Files: backend/voice-models/kokoro-v1.0.onnx, backend/voice-models/voices-v1.0.bin -->
+
+**Expected SHA256 hashes:**
+
+| File | SHA256 |
+|------|--------|
+| `kokoro-v1.0.onnx` | `7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5` |
+| `voices-v1.0.bin` | `bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d` |
+
+**Linux / macOS:**
+
+```bash
+cd backend/voice-models/
+echo "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5  kokoro-v1.0.onnx" | sha256sum -c -
+echo "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d  voices-v1.0.bin"  | sha256sum -c -
+```
+
+If either check prints **FAILED**, delete the corrupted file and re-download it.
+
+**Windows (PowerShell):**
+
+```powershell
+cd backend\voice-models\
+if ((Get-FileHash kokoro-v1.0.onnx -Algorithm SHA256).Hash -ne "7D5DF8ECF7D4B1878015A32686053FD0EEBE2BC377234608764CC0EF3636A6C5") { Write-Error "❌ kokoro-v1.0.onnx checksum mismatch! Delete and re-download."; exit 1 }
+if ((Get-FileHash voices-v1.0.bin  -Algorithm SHA256).Hash -ne "BCA610B8308E8D99F32E6FE4197E7EC01679264EFED0CAC9140FE9C29F1FBF7D") { Write-Error "❌ voices-v1.0.bin checksum mismatch! Delete and re-download.";  exit 1 }
+Write-Output "✅ All checksums verified."
+```
+
+### Voice Mapping
+
+Voices are automatically assigned based on the agent role and persona gender:
+
+| Role | Voice | Description |
+|------|-------|-------------|
+| Moderator | `am_adam` | Authoritative male |
+| Judge (Logic) | `af_sarah` | Clear, precise female |
+| Judge (Evidence) | `am_michael` | Sophisticated male |
+| Judge (Rhetoric) | `bf_emma` | British female |
+| Gap Reporter | `af_nicole` | Upbeat female |
+| **Debater (male persona)** | `am_adam` / `bm_george` | Inferred from persona name |
+| **Debater (female persona)** | `af_bella` / `af_sarah` | Inferred from persona name |
+
+> Gender is inferred from the persona's first name (e.g., "Dr. Sarah Chen" → female → `af_bella`). If unknown, debater A defaults to female and debater B to male for vocal variety.
+
+### Performance
+
+- **Sentence pipelining:** The frontend splits text into sentences and requests each one separately, so the first sentence plays almost instantly while the rest generate in the background.
+- **LRU cache:** The backend caches up to 200 synthesized audio segments. Replaying a message is instant on the second click.
+
 ## Debate Flow
 
 1. **Choose a topic** — `GET /api/topics`
@@ -104,7 +200,7 @@ Navigate to [http://localhost:8000/docs](http://localhost:8000/docs) for the int
 ### Database Tables
 
 | Table | Purpose |
-|-------|---------|
+|-------|---------| 
 | `users` | User accounts, credentials, and profile info |
 | `gap_reports` | Saved gap reports linked to users |
 
@@ -116,3 +212,4 @@ Navigate to [http://localhost:8000/docs](http://localhost:8000/docs) for the int
 - **SSE** — Real-time streaming via Server-Sent Events
 - **Pydantic** — Data validation and serialization
 - **bcrypt + JWT** — Authentication
+- **kokoro-onnx** — Offline TTS with persona-specific voices

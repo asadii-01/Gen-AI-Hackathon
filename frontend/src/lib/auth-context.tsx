@@ -61,8 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const updated = await fetchCurrentUser();
       setUser(updated);
-    } catch {
-      // Token may have expired
+    } catch (error) {
+      console.warn("Failed to refresh user:", error);
     }
   }, []);
 

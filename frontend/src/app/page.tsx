@@ -9,6 +9,12 @@ import {
   HiSparkles,
   HiChatBubbleLeftRight,
 } from "react-icons/hi2";
+import { TypewriterEffect } from "@/components/ui/typewriter-effect";
+import SplashCursor from "@/components/ui/splashcursor";
+const words = [
+  { text: "Socratic",className:"gradient-text" },
+  { text: "Canvas", className:"text-[var(--text-primary)]" },
+];
 
 export default function Home() {
   const [topics, setTopics] = useState<TopicSummary[]>([]);
@@ -29,6 +35,7 @@ export default function Home() {
         className="relative overflow-hidden py-24 sm:py-32"
         style={{ background: "var(--gradient-hero)" }}
       >
+        <SplashCursor />
         {/* Subtle grid overlay */}
         <div
           className="absolute inset-0 opacity-[0.03]"
@@ -51,8 +58,7 @@ export default function Home() {
             </div>
 
             <h1 className="mb-6 text-5xl font-black tracking-tight sm:text-7xl">
-              <span className="gradient-text">Socratic</span>
-              <span className="text-[var(--text-primary)]">Canvas</span>
+              <TypewriterEffect words={words} />
             </h1>
 
             <p className="mx-auto max-w-2xl text-lg text-[var(--text-secondary)] leading-relaxed sm:text-xl">

@@ -6,6 +6,7 @@ import {
   HiAcademicCap,
   HiScale,
   HiChatBubbleLeftRight,
+  HiSpeakerWave,
 } from "react-icons/hi2";
 
 interface Props {
@@ -13,6 +14,8 @@ interface Props {
   personaName: string;
   content: string;
   isNew?: boolean;
+  onSpeak?: (content: string, role: string) => void;
+  isSpeakingThis?: boolean;
 }
 
 const roleStyles: Record<
@@ -70,9 +73,17 @@ const defaultStyle = {
   icon: <HiChatBubbleLeftRight className="h-5 w-5 text-slate-400" />,
 };
 
-export default function ChatMessage({ role, personaName, content, isNew }: Props) {
+export default function ChatMessage({
+  role,
+  personaName,
+  content,
+  isNew,
+  onSpeak,
+  isSpeakingThis,
+}: Props) {
   const style = roleStyles[role] || defaultStyle;
   const isStudent = role === AgentRole.STUDENT;
+  const showSpeaker = !isStudent && onSpeak;
 
   return (
     <div
@@ -91,6 +102,22 @@ export default function ChatMessage({ role, personaName, content, isNew }: Props
           <span className={`text-sm font-semibold ${style.accent}`}>
             {personaName || role}
           </span>
+
+          {/* TTS Speaker button */}
+          {showSpeaker && (
+            <button
+              onClick={() => onSpeak!(content, role)}
+              className={`ml-auto flex items-center justify-center h-7 w-7 rounded-full transition-all ${
+                isSpeakingThis
+                  ? "bg-[var(--accent-purple)]/20 text-[var(--accent-purple)] speaking-indicator"
+                  : "text-[var(--text-muted)] hover:text-[var(--accent-purple)] hover:bg-[var(--accent-purple)]/10"
+              }`}
+              title={isSpeakingThis ? "Speaking..." : "Listen to this message"}
+              aria-label={isSpeakingThis ? "Speaking..." : "Listen to this message"}
+            >
+              <HiSpeakerWave className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Content */}
